@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Pixel Cat - Idle Game</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <!-- Three.js Library Hosted Locally -->
+    <script src="three.min.js"></script>
+</head>
+
+<body>
+    <div id="app" class="pixel-container">
+        <!-- Global 3D Viewport -->
+        <div id="game-viewport" class="game-viewport"></div>
+
+        <!-- Start/Login Screen -->
+        <div id="start-screen" class="screen">
+            <h1 class="pixel-title">Daily Pixel Cat</h1>
+            <div class="cat-preview-container">
+                <!-- 3D Scene will show here -->
+            </div>
+            <p class="subtitle">Enter your nickname to start!</p>
+            <div class="input-group">
+                <input type="text" id="nickname-input" placeholder="Nickname..." maxlength="12">
+                <button id="begin-btn" class="pixel-btn primary">Begin Adventure</button>
+            </div>
+        </div>
+
+        <!-- Main Menu Screen -->
+        <div id="menu-screen" class="screen hidden">
+            <h1 class="pixel-title small">Daily Pixel Cat</h1>
+            <div class="menu-cat-box">
+                <!-- 3D Scene will show here -->
+            </div>
+            <div class="menu-options">
+                <button data-screen="game" class="pixel-btn menu-btn">Play</button>
+                <button data-screen="shop" class="pixel-btn menu-btn">Shop</button>
+                <button data-screen="stats" class="pixel-btn menu-btn">Stats</button>
+                <button id="menu-sound-toggle" class="pixel-btn menu-btn">Sound: ON</button>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen hidden">
+            <div class="top-nav">
+                <button data-screen="menu" class="icon-btn">🏠</button>
+                <div class="stats-row">
+                    <div class="mini-stat">🪙 <span id="game-coins">0</span></div>
+                    <div class="mini-stat">🔥 <span id="game-streak">0</span></div>
+                </div>
+            </div>
+
+            <div class="game-main">
+                <div id="game-area" class="game-area">
+                    <!-- Global viewport used instead -->
+                </div>
+
+                <!-- Toy Display Area -->
+                <div id="toy-layer" class="toy-layer"></div>
+
+                <div class="hunger-ui">
+                    <div class="hunger-label">Hunger <span id="hunger-val">0%</span></div>
+                    <div class="pixel-progress">
+                        <div id="hunger-bar" class="progress-fill"></div>
+                    </div>
+                </div>
+
+                <button id="feed-btn" class="pixel-btn feed-btn">
+                    <span>FEED CAT</span>
+                    <small>(-10 🪙)</small>
+                </button>
+                <button id="play-btn" class="pixel-btn feed-btn"
+                    style="margin-top: 0.5rem; background: var(--secondary); color: var(--text);">
+                    <span>PLAY (Needs Toy)</span>
+                </button>
+            </div>
+
+            <!-- Daily Rewards -->
+            <div id="reward-banner" class="reward-banner hidden">
+                <span>Daily Reward: +50 🪙</span>
+            </div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shop-screen" class="screen hidden">
+            <div class="top-nav">
+                <button data-screen="menu" class="icon-btn">🏠</button>
+                <h2 class="pixel-title tiny">Cat Shop</h2>
+            </div>
+            <div class="shop-tabs">
+                <button id="tab-cats" class="tab-btn active">Cats</button>
+                <button id="tab-toys" class="tab-btn">Toys</button>
+            </div>
+            <div class="shop-grid" id="shop-grid">
+                <!-- Data injected here -->
+            </div>
+        </div>
+
+        <!-- Stats Screen -->
+        <div id="stats-screen" class="screen hidden">
+            <div class="top-nav">
+                <button data-screen="menu" class="icon-btn">🏠</button>
+                <h2 class="pixel-title tiny">Your Stats</h2>
+            </div>
+            <div class="stats-content">
+                <div class="stat-card">
+                    <label>Nickname</label>
+                    <span id="stat-name">-</span>
+                </div>
+                <div class="stat-card">
+                    <label>Total Feeds</label>
+                    <span id="stat-feeds">0</span>
+                </div>
+                <div class="stat-card">
+                    <label>Current Streak</label>
+                    <span id="stat-streak">0</span>
+                </div>
+                <div class="stat-card">
+                    <label>Coins Earned</label>
+                    <span id="stat-lifetime-coins">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Anti-Cheat Overlay -->
+        <div id="cheat-screen" class="overlay hidden">
+            <div class="overlay-box">
+                <h2>⚠️ TIME ERROR</h2>
+                <p>System clock moved backwards! Reset your time to continue.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio -->
+    <audio id="sfx-pop" src="https://assets.mixkit.co/active_storage/sfx/2045/2045-preview.mp3"></audio>
+    <audio id="sfx-coin" src="https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3"></audio>
+
+    <!-- Game Modules -->
+    <script src="threeScene.js" defer></script>
+    <script src="catModel.js" defer></script>
+    <script src="script.js" defer></script>
+</body>
+
+</html>
