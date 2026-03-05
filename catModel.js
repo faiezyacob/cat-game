@@ -47,13 +47,13 @@ class CatModel {
 
         // Eyes
         const eyeGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-        const eyeL = new THREE.Mesh(eyeGeo, this.eyeMat);
-        eyeL.position.set(1.05, 1.2, 0.2);
-        this.group.add(eyeL);
+        this.eyeL = new THREE.Mesh(eyeGeo, this.eyeMat);
+        this.eyeL.position.set(1.05, 1.2, 0.2);
+        this.group.add(this.eyeL);
 
-        const eyeR = new THREE.Mesh(eyeGeo, this.eyeMat);
-        eyeR.position.set(1.05, 1.2, -0.2);
-        this.group.add(eyeR);
+        this.eyeR = new THREE.Mesh(eyeGeo, this.eyeMat);
+        this.eyeR.position.set(1.05, 1.2, -0.2);
+        this.group.add(this.eyeR);
 
         // Nose
         const nose = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.15), this.noseMat);
@@ -99,7 +99,10 @@ class CatModel {
         this.legs.forEach(leg => {
             leg.rotation.x = 0;
             leg.rotation.z = 0;
+            leg.position.y = 0.2; // Reset leg y
         });
+        this.eyeL.scale.y = 1;
+        this.eyeR.scale.y = 1;
 
         // Idle bobbing
         if (state === 'idle') {
@@ -115,7 +118,16 @@ class CatModel {
             });
         }
 
-        // Play animation
+        // Fast Chase / Run animation
+        if (state === 'chase') {
+            this.group.position.y = Math.abs(Math.sin(elapsed * 0.02)) * 0.1; // Reduced from 0.2
+            this.legs.forEach((leg, i) => {
+                leg.rotation.z = Math.sin(elapsed * 0.03 + (i % 2) * Math.PI) * 0.8;
+            });
+            this.tail.rotation.z = Math.sin(elapsed * 0.02) * 0.5 + 0.5;
+        }
+
+        // Play animation (Pounce/Jump)
         if (state === 'play') {
             this.group.position.y = Math.abs(Math.sin(elapsed * 0.008)) * 0.8 + 0.2; // Jump up and down
             this.group.rotation.x = Math.sin(elapsed * 0.005) * 0.5; // Pitch up and down
@@ -123,6 +135,44 @@ class CatModel {
             this.legs.forEach((leg, i) => {
                 leg.rotation.x = Math.sin(elapsed * 0.015 + i) * 0.8; // Flailing legs
             });
+        }
+
+        // Eating animation
+        if (state === 'eat') {
+            this.head.rotation.z = Math.sin(elapsed * 0.01) * 0.4 + 0.2; // Rapid head bobbing
+            this.group.position.y = 0;
+            this.tail.rotation.z = Math.sin(elapsed * 0.005) * 0.3 + 0.5;
+        }
+
+        // Sit / Sleeping
+        if (state === 'sit' || state === 'sleep') {
+            this.group.position.y = -0.15; // Lower to ground
+            this.legs.forEach(leg => {
+                leg.rotation.x = -Math.PI / 2.5; // Tuck legs
+                leg.position.y = 0.1; // Squatting
+            });
+            this.head.rotation.z = -0.2;
+
+            if (state === 'sleep') {
+                this.eyeL.scale.y = 0.1; // Closed eyes
+                this.eyeR.scale.y = 0.1;
+                // Breathing
+                const breath = Math.sin(elapsed * 0.001) * 0.02;
+                this.group.scale.set(1 + breath, 1 + breath, 1 + breath);
+            }
+        }
+
+        // Lick / Grooming
+        if (state === 'lick') {
+            const lickCycle = Math.sin(elapsed * 0.008);
+            this.head.rotation.z = lickCycle * 0.3 + 0.3; // Licking motion
+            this.head.rotation.x = Math.sin(elapsed * 0.005) * 0.2;
+
+            // Lift front-right leg to face
+            const frontLeg = this.legs[0];
+            frontLeg.rotation.z = 1.2 + lickCycle * 0.2;
+            frontLeg.rotation.x = 0.5;
+            frontLeg.position.y = 0.4;
         }
 
         // Sad animation
