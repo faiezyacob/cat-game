@@ -18,14 +18,17 @@ class ToyModel {
 
     build(type) {
         // Clear existing
-        while(this.group.children.length > 0) { 
-            this.group.remove(this.group.children[0]); 
+        while (this.group.children.length > 0) {
+            this.group.remove(this.group.children[0]);
         }
         this.type = type;
+        this.group.position.set(0, 0, 0);
+        this.group.rotation.set(0, 0, 0);
+        this.group.scale.set(1, 1, 1);
 
         if (type === 'ball') {
             this.mesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), this.ballMat);
-            this.mesh.position.y = 0.2; // Radius is 0.2, so 0.2 puts it on top of ground
+            this.mesh.position.y = 0.2;
             this.mesh.castShadow = true;
             this.group.add(this.mesh);
         } else if (type === 'feather') {
@@ -41,20 +44,21 @@ class ToyModel {
             this.mesh = new THREE.Group();
             // Body
             const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.3), this.mouseMat);
+            body.position.y = 0.15;
             body.castShadow = true;
             this.mesh.add(body);
             // Ears
             const earL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), this.mouseMat);
-            earL.position.set(0.2, 0.2, 0.1);
+            earL.position.set(0.2, 0.3, 0.1);
             this.mesh.add(earL);
             const earR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.2, 0.1), this.mouseMat);
-            earR.position.set(0.2, 0.2, -0.1);
+            earR.position.set(0.2, 0.3, -0.1);
             this.mesh.add(earR);
             // Tail
             const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), this.mouseMat);
-            tail.position.set(-0.4, -0.1, 0);
+            tail.position.set(-0.4, 0.05, 0);
             this.mesh.add(tail);
-            
+
             this.group.add(this.mesh);
         } else if (type === 'food') {
             this.mesh = new THREE.Group();

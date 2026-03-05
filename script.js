@@ -1,6 +1,11 @@
 /**
  * Daily Pixel Cat - 3D Engine Core (Three.js)
  */
+import { UIManager } from './ui/uiManager.js';
+import { StatsPanel } from './ui/statsPanel.js';
+import { TasksPanel } from './ui/tasksPanel.js';
+import { ActionButtons } from './ui/actionButtons.js';
+import { AudioManager } from './audioManager.js';
 
 const SAVE_KEY = "pixelCatSave";
 const HUNGER_24H_MS = 15 * 60 * 1000; // 15 minutes for a full hunger bar
@@ -11,11 +16,11 @@ const MS_IN_48_HOURS = 48 * 60 * 60 * 1000;
 
 // Cat Definitions
 const CATS = {
-    tabby: { name: "Tabby", color: 0xffa726, req: "Default" },
-    black: { name: "Black Cat", color: 0x333333, req: "Level 5" },
-    white: { name: "White Cat", color: 0xffffff, req: "Level 10" },
-    calico: { name: "Calico", color: 0xffdab9, req: "Level 15" },
-    golden: { name: "Golden Cat", color: 0xffd700, req: "Level 25" }
+    tabby: { name: "Tabby", color: 0xffa726, levelReq: 1, price: 0 },
+    black: { name: "Black Cat", color: 0x333333, levelReq: 5, price: 500 },
+    white: { name: "White Cat", color: 0xffffff, levelReq: 10, price: 1500 },
+    calico: { name: "Calico", color: 0xffdab9, levelReq: 15, price: 3000 },
+    golden: { name: "Golden Cat", color: 0xffd700, levelReq: 25, price: 10000 }
 };
 
 let state = JSON.parse(localStorage.getItem(SAVE_KEY)) || {
@@ -42,11 +47,14 @@ let state = JSON.parse(localStorage.getItem(SAVE_KEY)) || {
     currentCat: "tabby",
     toys: ["ball"],
     currentToy: "ball",
-    soundEnabled: true
+    soundEnabled: true,
+    lastPlayed: Date.now(),
+    dailyTasks: [],
+    lastTaskReset: 0
 };
 
 // Systems Initialization
-let statsSys, inventorySys, catEnt, behaviorCtrl, eventSys;
+let statsSys, inventorySys, catEnt, behaviorCtrl, eventSys, uiMgr, audioMgr;
 
 const TOYS_DEF = {
     ball: { name: "Ball", icon: "🧶", cost: 100, desc: "Play mode" },
@@ -59,22 +67,8 @@ const dom = {
     navBtns: document.querySelectorAll('[data-screen]'),
     nicknameInput: document.getElementById('nickname-input'),
     beginBtn: document.getElementById('begin-btn'),
-    hungerBar: document.getElementById('hunger-bar'),
-    hungerVal: document.getElementById('hunger-val'),
-    happBar: document.getElementById('happ-bar'),
-    happVal: document.getElementById('happ-val'),
-    energyBar: document.getElementById('energy-bar'),
-    energyVal: document.getElementById('energy-val'),
-    cleanBar: document.getElementById('clean-bar'),
-    cleanVal: document.getElementById('clean-val'),
     gameCoins: document.getElementById('game-coins'),
-    gameStreak: document.getElementById('game-streak'),
     gameViewport: document.getElementById('game-viewport'),
-    feedBtn: document.getElementById('feed-btn'),
-    playBtn: document.getElementById('play-btn'),
-    roomBtn: document.getElementById('room-btn'), // For Phase 4
-    groomBtn: document.getElementById('groom-btn'),
-    sleepBtn: document.getElementById('sleep-btn'),
     rewardBanner: document.getElementById('reward-banner'),
     shopGrid: document.getElementById('shop-grid'),
     shopCatsTab: document.getElementById('tab-cats'),
@@ -87,7 +81,18 @@ const dom = {
     cheatScreen: document.getElementById('cheat-screen'),
     sfxPop: document.getElementById('sfx-pop'),
     sfxCoin: document.getElementById('sfx-coin'),
-    gameLevel: document.getElementById('game-level')
+    sfxEat: document.getElementById('sfx-eat'),
+    sfxGroom: document.getElementById('sfx-groom'),
+    sfxSleep: document.getElementById('sfx-sleep'),
+    sfxLevel: document.getElementById('sfx-level'),
+    sfxPlay: document.getElementById('sfx-play'),
+    gameLevel: document.getElementById('game-level'),
+
+    // UI Anchors
+    statsAnchor: document.getElementById('stats-panel-anchor'),
+    tasksAnchor: document.getElementById('tasks-panel-anchor'),
+    actionsAnchor: document.getElementById('action-buttons-anchor'),
+    tasksToggle: document.getElementById('tasks-toggle-btn')
 };
 
 /**
@@ -130,6 +135,9 @@ function init() {
         // Migration
         if (!state.stats) state.stats = { hunger: 50, happiness: 100, energy: 100, cleanliness: 100, xp: 0, level: 1 };
         if (!state.inventory) state.inventory = { feather: 0, yarn: 0, bell: 0 };
+        if (!state.lastPlayed) state.lastPlayed = Date.now();
+        if (!state.dailyTasks) state.dailyTasks = [];
+        if (!state.lastTaskReset) state.lastTaskReset = 0;
     }
 
     // Initialize Systems (AFTER loading state)
@@ -140,8 +148,25 @@ function init() {
     eventSys = new EventSystem((evt) => handleRandomEvent(evt));
 
     handleDailyLogin();
+    handleIdleRewards();
+    checkDailyReset();
     updateCatVariant();
-    
+
+    // Initialize Audio
+    audioMgr = new AudioManager();
+    audioMgr.updateMuteState(!state.soundEnabled);
+    uiMgr = new UIManager(world);
+    const statsP = new StatsPanel(dom.statsAnchor);
+    const tasksP = new TasksPanel(dom.tasksAnchor, dom.tasksToggle);
+    const actionB = new ActionButtons(dom.actionsAnchor, {
+        feed: () => feedCat(),
+        play: () => playCat(),
+        groom: () => groomCat(),
+        sleep: () => sleepCat()
+    });
+
+    uiMgr.init(statsP, tasksP, actionB);
+
     if (saved) {
         showScreen('menu');
     } else {
@@ -153,7 +178,7 @@ function init() {
         if (!lastTime) lastTime = time;
         const deltaMs = time - lastTime;
         lastTime = time;
-        
+
         // Cap delta to prevent spikes after tab wake
         const cappedDelta = Math.min(deltaMs, 100);
         const dt = cappedDelta / 16.6; // Normalized 60fps unit
@@ -162,12 +187,12 @@ function init() {
             const isActive = catState === 'play' || catState === 'chase';
             const levelUp = statsSys.update(cappedDelta, isActive);
             if (levelUp) showLevelUp();
-            
+
             behaviorCtrl.update(dt, time);
             eventSys.update(dt, time);
             catEnt.setState(catState); // Sync state for animation
             catEnt.update(dt, time);
-            
+
             updateAI(dt, time);
             if (toy && toy.group) toy.animate(dt, time);
         } else {
@@ -182,11 +207,16 @@ function init() {
 
     // Event Listeners
     dom.beginBtn.addEventListener('click', startNewGame);
-    dom.feedBtn.addEventListener('click', feedCat);
-    dom.playBtn.addEventListener('click', playCat);
-    dom.groomBtn.addEventListener('click', groomCat);
-    dom.sleepBtn.addEventListener('click', sleepCat);
     dom.soundToggle.addEventListener('click', toggleSound);
+
+    const musicBtn = document.getElementById('music-toggle-btn');
+    if (musicBtn) {
+        musicBtn.addEventListener('click', () => {
+            toggleSound();
+            // Optional: update icon or visual state here
+        });
+    }
+
     dom.shopCatsTab.addEventListener('click', () => { shopTab = 'cats'; renderShop(); });
     dom.shopToysTab.addEventListener('click', () => { shopTab = 'toys'; renderShop(); });
     dom.navBtns.forEach(btn => btn.addEventListener('click', () => showScreen(btn.dataset.screen)));
@@ -225,7 +255,7 @@ function updateAI(dt, now) {
                 toy.group.position.x = Math.sin(now * 0.001) * 0.5;
             }
         }
-        
+
         if (now > moveTimer) {
             catState = 'idle';
             if (toy.group.parent) world.scene.remove(toy.group);
@@ -238,11 +268,11 @@ function updateAI(dt, now) {
         const toyPos = toy.group.position;
         const catPos = cat.group.position;
         const MAX_X = 8; // Move off-screen to the right
-        
+
         // Linear move to the right
         if (toyPos.x < MAX_X) toyPos.x += 0.08 * dt;
-        if (catPos.x < MAX_X) catPos.x += 0.11 * dt; 
-        
+        if (catPos.x < MAX_X) catPos.x += 0.11 * dt;
+
         cat.setDirection(1); // Always face right
 
         if (now > moveTimer) {
@@ -310,48 +340,15 @@ let lastUIState = {
 };
 
 function syncUI() {
-    if (!statsSys) return;
+    if (!statsSys || !uiMgr) return;
     const s = statsSys.getState();
-    const coins = state.coins;
-    const streak = state.streak;
 
-    // Smooth Bar Updates
-    updateBar(dom.hungerBar, dom.hungerVal, s.hunger);
-    updateBar(dom.happBar, dom.happVal, s.happiness);
-    updateBar(dom.energyBar, dom.energyVal, s.energy);
-    updateBar(dom.cleanBar, dom.cleanVal, s.cleanliness);
+    // Refresh Modular Components
+    uiMgr.refresh(state, statsSys, catState);
 
+    // Update Floating Stats
     if (dom.gameLevel) dom.gameLevel.textContent = s.level;
-
-    if (coins !== lastUIState.coins) {
-        dom.gameCoins.textContent = coins;
-        lastUIState.coins = coins;
-    }
-    if (streak !== lastUIState.streak) {
-        dom.gameStreak.textContent = streak;
-        lastUIState.streak = streak;
-    }
-
-    // Button States
-    const isBusy = catState === 'play' || catState === 'chase' || catState === 'eat' || catState === 'lick' || catState === 'sleep';
-    
-    // Use floor/ceil to sync with displayed values
-    const hRounded = Math.floor(s.hunger);
-    const eRounded = Math.floor(s.energy);
-    const cRounded = Math.floor(s.cleanliness);
-
-    dom.playBtn.disabled = isBusy || hRounded >= 100 || eRounded <= 0;
-    dom.feedBtn.disabled = isBusy || hRounded <= 0;
-    dom.groomBtn.disabled = isBusy || cRounded >= 100;
-    dom.sleepBtn.disabled = isBusy || eRounded >= 100;
-
-    // Update Play Button Text
-    const playLabel = dom.playBtn.querySelector('.btn-label');
-    if (hRounded >= 100) playLabel.textContent = "TOO HUNGRY";
-    else if (eRounded <= 0) playLabel.textContent = "TOO TIRED";
-    else if (catState === 'play' || catState === 'chase') playLabel.textContent = "PLAYING...";
-    else if (catState === 'eat') playLabel.textContent = "EATING...";
-    else playLabel.textContent = "PLAY";
+    if (dom.gameCoins) dom.gameCoins.textContent = state.coins;
 }
 
 function updateBar(bar, valText, value) {
@@ -405,15 +402,16 @@ function feedCat() {
     statsSys.modify('hunger', -30);
     statsSys.modify('happiness', 5);
     statsSys.addXP(5);
-    
+
     catState = 'eat';
     toy.build('food');
     toy.group.position.set(0.6, 0.1, 0.2);
     world.scene.add(toy.group);
-    
+    updateTaskProgress('feed');
+
     cat.setDirection(0);
-    moveTimer = performance.now() + 3000;
-    playSound(dom.sfxPop);
+    moveTimer = lastTime + 3000;
+    playSound(dom.sfxEat);
     saveGame();
 }
 
@@ -422,11 +420,16 @@ function playCat() {
     if (isBusy()) return;
     if (Math.floor(s.energy) <= 0) { notify("💤 Cat is too tired to play!"); return; }
     if (Math.floor(s.hunger) >= 100) { notify("🍱 Cat is too hungry to play!"); return; }
-    
+
     statsSys.modify('energy', -20);
     statsSys.modify('happiness', 15);
-    statsSys.addXP(10);
-    
+    statsSys.addXP(15); // Increased XP reward
+
+    // Coin reward for playing
+    const coinReward = 5 + Math.floor(Math.random() * 6); // 5-10 coins
+    state.coins += coinReward;
+    state.lifetimeCoins += coinReward;
+
     if (state.currentToy === 'ball') {
         catState = 'chase';
         toy.build('ball');
@@ -437,9 +440,11 @@ function playCat() {
         toy.build(state.currentToy);
         toy.group.position.set(0.6, toy.type === 'feather' ? 2 : 0, 0);
     }
-    
+
     world.scene.add(toy.group);
-    moveTimer = performance.now() + 3000;
+    moveTimer = lastTime + 3000;
+    updateTaskProgress('play');
+    playSound(dom.sfxPlay);
     saveGame();
 }
 
@@ -447,11 +452,13 @@ function groomCat() {
     const s = statsSys.getState();
     if (isBusy()) return;
     if (Math.floor(s.cleanliness) >= 100) { notify("🧼 Cat is already clean!"); return; }
-    
+
     statsSys.modify('cleanliness', 25);
     statsSys.addXP(3);
     catState = 'lick';
-    moveTimer = performance.now() + 3000;
+    moveTimer = lastTime + 3000;
+    updateTaskProgress('groom');
+    playSound(dom.sfxGroom);
     saveGame();
 }
 
@@ -459,10 +466,12 @@ function sleepCat() {
     const s = statsSys.getState();
     if (isBusy()) return;
     if (Math.floor(s.energy) >= 100) { notify("⚡ Cat is full of energy!"); return; }
-    
+
     statsSys.modify('energy', 40);
     catState = 'sleep';
-    moveTimer = performance.now() + 5000;
+    moveTimer = lastTime + 5000;
+    updateTaskProgress('sleep');
+    playSound(dom.sfxSleep);
     saveGame();
 }
 
@@ -482,7 +491,7 @@ function handleRandomEvent(type) {
             notify("🐦 Cat chased the bird! +20 🪙");
         });
     } else if (type === 'yarn') {
-        const item = ['yarn', 'feather', 'bell'][Math.floor(Math.random()*3)];
+        const item = ['yarn', 'feather', 'bell'][Math.floor(Math.random() * 3)];
         notify(`🧶 Item found: ${item.toUpperCase()}!`, () => {
             inventorySys.addItem(item);
             statsSys.modify('happiness', 5);
@@ -503,7 +512,11 @@ function handleRandomEvent(type) {
 
 function showLevelUp() {
     const s = statsSys.getState();
-    notify(`✨ LEVEL UP! You are now Level ${s.level}!`);
+    const reward = 100 + (s.level * 20); // Base 100 + scaling
+    state.coins += reward;
+    state.lifetimeCoins += reward;
+    notify(`✨ LEVEL UP! Level ${s.level}! +${reward} 🪙`);
+    playSound(dom.sfxLevel);
     saveGame();
 }
 
@@ -512,7 +525,7 @@ function notify(text, onClick, duration = 4000, onExpire) {
     toast.className = 'pixel-toast';
     toast.textContent = text;
     document.body.appendChild(toast);
-    
+
     let timer = setTimeout(() => {
         toast.remove();
         if (onExpire) onExpire();
@@ -525,10 +538,61 @@ function notify(text, onClick, duration = 4000, onExpire) {
     };
 }
 
-function saveGame() { 
+function saveGame() {
     if (statsSys) state.stats = statsSys.getState();
     if (inventorySys) state.inventory = inventorySys.getInventory();
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state)); 
+    state.lastPlayed = Date.now();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+}
+
+function handleIdleRewards() {
+    if (!state.lastPlayed) {
+        state.lastPlayed = Date.now();
+        return;
+    }
+
+    const now = Date.now();
+    const diff = now - state.lastPlayed;
+
+    // Minimum 10 minutes required for first coin (600,000 ms)
+    if (diff < 600000) return;
+
+    // Cap at 12 hours (43,200,000 ms)
+    const cappedDiff = Math.min(diff, 12 * 60 * 60 * 1000);
+    const coinsEarned = Math.floor(cappedDiff / (10 * 60 * 1000));
+
+    if (coinsEarned > 0) {
+        setTimeout(() => showIdlePopup(coinsEarned), 1000); // Small delay for effect
+    }
+}
+
+function showIdlePopup(amount) {
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay idle-reward-overlay';
+    overlay.innerHTML = `
+        <div class="overlay-box reward-modal bounce-anim">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">😴</div>
+            <h2>While you were away...</h2>
+            <p>Your cat was busy playing and earned you:</p>
+            <div class="reward-amount">
+                <span style="font-size: 2.5rem; font-weight: 700; color: #ffd700;">${amount}</span>
+                <span style="font-size: 1.5rem;">🪙</span>
+            </div>
+            <button id="collect-idle-btn" class="pixel-btn primary" style="margin-top: 1.5rem;">Collect Coins</button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    document.getElementById('collect-idle-btn').onclick = () => {
+        state.coins += amount;
+        state.lifetimeCoins += amount;
+        playSound(dom.sfxCoin);
+        syncUI();
+        saveGame();
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.3s';
+        setTimeout(() => overlay.remove(), 300);
+    };
 }
 
 
@@ -546,16 +610,12 @@ function handleDailyLogin() {
     } else if (elapsed >= MS_IN_48_HOURS) { state.streak = 1; }
     state.lastLogin = now;
     if (state.streak === 0) state.streak = 1;
-    checkUnlocks();
     saveGame();
 }
 
+// Unlocks are now handled via shop purchase
 function checkUnlocks() {
-    const s = statsSys.getState();
-    if (s.level >= 5 && !state.unlockedCats.includes('black')) state.unlockedCats.push('black');
-    if (s.level >= 10 && !state.unlockedCats.includes('white')) state.unlockedCats.push('white');
-    if (s.level >= 15 && !state.unlockedCats.includes('calico')) state.unlockedCats.push('calico');
-    if (s.level >= 25 && !state.unlockedCats.includes('golden')) state.unlockedCats.push('golden');
+    return;
 }
 
 let shopTab = 'cats';
@@ -570,17 +630,50 @@ function renderShop() {
             const catDef = CATS[id];
             const isUnlocked = state.unlockedCats.includes(id);
             const isActive = state.currentCat === id;
+            const levelMet = statsSys.getState().level >= catDef.levelReq;
+            const canAfford = state.coins >= catDef.price;
+
             const item = document.createElement('div');
             item.className = `shop-item ${!isUnlocked ? 'locked' : ''} ${isActive ? 'active' : ''}`;
+
+            let statusHTML = '';
+            if (isUnlocked) {
+                statusHTML = `<span class="unlock-req">Owned</span>`;
+            } else {
+                statusHTML = `
+                    <span class="unlock-req" style="color: ${levelMet ? '#4caf50' : '#f44336'}">Req: Lvl ${catDef.levelReq}</span>
+                    <span class="unlock-req" style="color: ${canAfford ? '#ffd700' : '#f44336'}">${catDef.price} 🪙</span>
+                `;
+            }
+
             item.innerHTML = `
-                <div style="font-size: 2rem; margin-bottom: 0.5rem; filter: grayscale(${isUnlocked ? 0 : 1});">🐱</div>
+                <div style="font-size: 2rem; margin-bottom: 0.5rem; filter: grayscale(${isUnlocked ? 0 : 0.7});">🐱</div>
                 <strong>${catDef.name}</strong>
-                <span class="unlock-req">${isUnlocked ? 'Unlocked' : catDef.req}</span>`;
-            if (isUnlocked) item.onclick = () => {
-                state.currentCat = id;
-                updateCatVariant();
-                saveGame();
-                renderShop();
+                ${statusHTML}`;
+
+            item.onclick = () => {
+                if (isActive) return;
+
+                if (isUnlocked) {
+                    state.currentCat = id;
+                    updateCatVariant();
+                    playSound(dom.sfxPop);
+                    saveGame();
+                    renderShop();
+                } else if (levelMet && canAfford) {
+                    state.coins -= catDef.price;
+                    state.unlockedCats.push(id);
+                    state.currentCat = id;
+                    updateCatVariant();
+                    playSound(dom.sfxCoin);
+                    saveGame();
+                    renderShop();
+                    notify(`🎉 New Cat Unlocked: ${catDef.name}!`);
+                } else if (!levelMet) {
+                    notify(`🔒 Need Level ${catDef.levelReq}!`);
+                } else {
+                    notify(`🪙 Need ${catDef.price} coins!`);
+                }
             };
             dom.shopGrid.appendChild(item);
         });
@@ -589,10 +682,10 @@ function renderShop() {
             const toy = TOYS_DEF[id];
             const isOwned = state.toys.includes(id);
             const isEquipped = state.currentToy === id;
-            
+
             const item = document.createElement('div');
             item.className = `shop-item ${isOwned ? 'active' : ''} ${isEquipped ? 'equipped' : ''}`;
-            
+
             let statusText = toy.cost + ' 🪙';
             if (isEquipped) statusText = 'Equipped';
             else if (isOwned) statusText = 'Owned (Click to Equip)';
@@ -601,10 +694,10 @@ function renderShop() {
                 <div style="font-size: 2rem; margin-bottom: 0.5rem;">${toy.icon}</div>
                 <strong>${toy.name}</strong>
                 <span class="unlock-req">${statusText}</span>`;
-            
+
             item.onclick = () => {
                 if (isEquipped) return;
-                
+
                 if (isOwned) {
                     state.currentToy = id;
                     playSound(dom.sfxPop);
@@ -645,13 +738,88 @@ function startNewGame() {
 
 function toggleSound() {
     state.soundEnabled = !state.soundEnabled;
-    dom.soundToggle.textContent = `Sound: ${state.soundEnabled ? 'ON' : 'OFF'}`;
+    if (audioMgr) audioMgr.updateMuteState(!state.soundEnabled);
+
+    // Update menu button text
+    if (dom.soundToggle) dom.soundToggle.textContent = `Sound: ${state.soundEnabled ? 'ON' : 'OFF'}`;
+
     saveGame();
 }
-function playSound(audio) { if (state.soundEnabled && audio) { audio.currentTime = 0; audio.play().catch(() => { }); } }
+
+function playSound(audioId) {
+    if (audioMgr) {
+        // audioId can be the element or just the ID string
+        const id = typeof audioId === 'string' ? audioId : (audioId?.id);
+        if (id) audioMgr.playSFX(id);
+    }
+}
 function showReward() {
     dom.rewardBanner.classList.remove('hidden');
     setTimeout(() => dom.rewardBanner.classList.add('hidden'), 5000);
+}
+
+/**
+ * Daily Task System
+ */
+const TASK_POOL = [
+    { id: 'feed', text: 'Feed cat', target: 3, rewardCoins: 50, rewardXP: 20 },
+    { id: 'play', text: 'Play with cat', target: 2, rewardCoins: 40, rewardXP: 15 },
+    { id: 'groom', text: 'Groom cat', target: 1, rewardCoins: 30, rewardXP: 10 },
+    { id: 'sleep', text: 'Make cat sleep', target: 1, rewardCoins: 20, rewardXP: 5 },
+    { id: 'feed_special', text: 'Delicious Meals', target: 5, rewardCoins: 100, rewardXP: 40 }
+];
+
+function checkDailyReset() {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+    const lastResetStr = localStorage.getItem('lastTaskResetDate');
+
+    if (todayStr !== lastResetStr) {
+        generateDailyTasks();
+        localStorage.setItem('lastTaskResetDate', todayStr);
+    }
+    syncUI();
+}
+
+function generateDailyTasks() {
+    // Pick 3 random tasks
+    const shuffled = [...TASK_POOL].sort(() => 0.5 - Math.random());
+    state.dailyTasks = shuffled.slice(0, 3).map(t => ({
+        ...t,
+        progress: 0,
+        completed: false
+    }));
+    saveGame();
+}
+
+
+function updateTaskProgress(actionId) {
+    let changed = false;
+    state.dailyTasks.forEach(task => {
+        if (task.id.includes(actionId) && !task.completed) {
+            task.progress++;
+            changed = true;
+            if (task.progress >= task.target) {
+                completeTask(task);
+            }
+        }
+    });
+
+    if (changed) {
+        syncUI();
+        saveGame();
+    }
+}
+
+function completeTask(task) {
+    task.completed = true;
+    state.coins += task.rewardCoins;
+    state.lifetimeCoins += task.rewardCoins;
+    statsSys.addXP(task.rewardXP);
+
+    notify(`✅ Task Complete: ${task.text}! +${task.rewardCoins} 🪙`);
+    playSound(dom.sfxCoin);
+    syncUI(); // Update coins/level display
 }
 
 window.addEventListener('DOMContentLoaded', init);

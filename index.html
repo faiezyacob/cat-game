@@ -47,65 +47,34 @@
 
         <!-- Game Screen -->
         <div id="game-screen" class="screen hidden">
-            <div class="top-nav">
-                <button data-screen="menu" class="icon-btn">🏠</button>
-                <div class="stats-row">
-                    <div class="mini-stat">⭐ <span id="game-level">1</span></div>
-                    <div class="mini-stat">🪙 <span id="game-coins">0</span></div>
-                    <div class="mini-stat">🔥 <span id="game-streak">0</span></div>
+            <!-- Unified HUD Layer -->
+            <div class="hud-layer">
+                <!-- Consolidated Top Bar -->
+                <div class="top-bar">
+                    <div class="top-bar-left">
+                        <div class="mini-stat">⭐ <span id="game-level">1</span></div>
+                        <div class="mini-stat">🪙 <span id="game-coins">0</span></div>
+                    </div>
+                    <div class="top-bar-right">
+                        <button id="music-toggle-btn" class="top-bar-btn">🎵</button>
+                        <button id="tasks-toggle-btn" class="top-bar-btn secondary">📋</button>
+                        <button data-screen="menu" class="top-bar-btn">🏠</button>
+                    </div>
+                </div>
+
+                <!-- HUD Content (Stats & Tasks) -->
+                <div class="hud-content">
+                    <div id="stats-panel-anchor" class="stats-panel-anchor persistent"></div>
+                    <div id="tasks-panel-anchor" class="tasks-panel-anchor"></div>
                 </div>
             </div>
 
-            <!-- Stats Panel (Moved Up) -->
-            <div class="stats-panel">
-                <div class="stat-group">
-                    <div class="stat-header"><span>Hunger</span> <span id="hunger-val">0%</span></div>
-                    <div class="pixel-progress"><div id="hunger-bar" class="progress-fill"></div></div>
-                </div>
-                <div class="stat-group">
-                    <div class="stat-header"><span>Happiness</span> <span id="happ-val">0%</span></div>
-                    <div class="pixel-progress"><div id="happ-bar" class="progress-fill" style="background: #ff8a80;"></div></div>
-                </div>
-                <div class="stat-group">
-                    <div class="stat-header"><span>Energy</span> <span id="energy-val">0%</span></div>
-                    <div class="pixel-progress"><div id="energy-bar" class="progress-fill" style="background: #ffd54f;"></div></div>
-                </div>
-                <div class="stat-group">
-                    <div class="stat-header"><span>Cleanliness</span> <span id="clean-val">0%</span></div>
-                    <div class="pixel-progress"><div id="clean-bar" class="progress-fill" style="background: #80deea;"></div></div>
-                </div>
+            <!-- Bottom UI (Actions) -->
+            <div class="ui-zone bottom-center">
+                <div id="action-buttons-anchor" class="action-buttons-anchor"></div>
             </div>
 
-            <div class="game-main">
-                <div id="game-area" class="game-area">
-                    <!-- Global viewport used instead -->
-                </div>
-
-                <!-- Toy Display Area -->
-                <div id="toy-layer" class="toy-layer"></div>
-
-                <!-- Action Grid -->
-                <div class="action-grid">
-                    <button id="feed-btn" class="pixel-btn action-btn">
-                        <div class="btn-icon">🍱</div>
-                        <div class="btn-label">FEED</div>
-                    </button>
-                    <button id="play-btn" class="pixel-btn action-btn" style="background: var(--secondary);">
-                        <div class="btn-icon">🧶</div>
-                        <div class="btn-label">PLAY</div>
-                    </button>
-                    <button id="groom-btn" class="pixel-btn action-btn">
-                        <div class="btn-icon">🧼</div>
-                        <div class="btn-label">GROOM</div>
-                    </button>
-                    <button id="sleep-btn" class="pixel-btn action-btn">
-                        <div class="btn-icon">💤</div>
-                        <div class="btn-label">SLEEP</div>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Daily Rewards -->
+            <!-- Notifications / Overlays -->
             <div id="reward-banner" class="reward-banner hidden">
                 <span>Daily Reward: +50 🪙</span>
             </div>
@@ -164,6 +133,11 @@
     <!-- Audio -->
     <audio id="sfx-pop" src="https://assets.mixkit.co/active_storage/sfx/2045/2045-preview.mp3"></audio>
     <audio id="sfx-coin" src="https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3"></audio>
+    <audio id="sfx-eat" src="https://assets.mixkit.co/active_storage/sfx/2045/2045-preview.mp3"></audio>
+    <audio id="sfx-groom" src="https://assets.mixkit.co/active_storage/sfx/1497/1497-preview.mp3"></audio>
+    <audio id="sfx-sleep" src="https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3"></audio>
+    <audio id="sfx-level" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"></audio>
+    <audio id="sfx-play" src="https://assets.mixkit.co/active_storage/sfx/2045/2045-preview.mp3"></audio>
 
     <!-- Game Modules -->
     <script src="threeScene.js" defer></script>
@@ -174,7 +148,7 @@
     <script src="catEntity.js" defer></script>
     <script src="behaviorController.js" defer></script>
     <script src="eventSystem.js" defer></script>
-    <script src="script.js" defer></script>
+    <script src="script.js" type="module"></script>
 </body>
 
 </html>
