@@ -4,8 +4,9 @@ export class AudioManager {
         this.bgm.loop = true;
         this.bgm.volume = 0.3; // Low volume for lo-fi
 
-        // Persistent state
-        this.isMuted = JSON.parse(localStorage.getItem('pixelCatMuted')) || false;
+        // Persistent state split
+        this.isBGMEnabled = true;
+        this.isSFXEnabled = true;
         this.hasInteracted = false;
 
         this.init();
@@ -16,7 +17,7 @@ export class AudioManager {
         const startAudio = () => {
             if (!this.hasInteracted) {
                 this.hasInteracted = true;
-                if (!this.isMuted) {
+                if (this.isBGMEnabled) {
                     this.bgm.play()
                         .then(() => console.log("BGM started successfully"))
                         .catch(e => {
@@ -36,24 +37,21 @@ export class AudioManager {
         document.addEventListener('keydown', startAudio);
     }
 
-    updateMuteState(muted) {
-        this.isMuted = muted;
-        localStorage.setItem('pixelCatMuted', JSON.stringify(this.isMuted));
-
-        if (this.isMuted) {
+    setBGMEnabled(enabled) {
+        this.isBGMEnabled = enabled;
+        if (!this.isBGMEnabled) {
             this.bgm.pause();
         } else if (this.hasInteracted) {
             this.bgm.play().catch(e => console.log("BGM play failed:", e));
         }
     }
 
-    toggleMute() {
-        this.updateMuteState(!this.isMuted);
-        return this.isMuted;
+    setSFXEnabled(enabled) {
+        this.isSFXEnabled = enabled;
     }
 
     playSFX(id) {
-        if (this.isMuted) return;
+        if (!this.isSFXEnabled) return;
         const sfx = document.getElementById(id);
         if (sfx) {
             sfx.currentTime = 0;

@@ -966,6 +966,11 @@ input[type="text"] {
     transform: translateY(-2px);
 }
 
+.top-bar-btn.muted {
+    opacity: 0.5;
+    filter: grayscale(0.8);
+}
+
 .mini-stat {
     font-weight: 800;
     font-size: 0.9rem;

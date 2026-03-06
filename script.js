@@ -47,7 +47,8 @@ let state = JSON.parse(localStorage.getItem(SAVE_KEY)) || {
     currentCat: "tabby",
     toys: ["ball"],
     currentToy: "ball",
-    soundEnabled: true,
+    bgmEnabled: true,
+    sfxEnabled: true,
     lastPlayed: Date.now(),
     dailyTasks: [],
     lastTaskReset: ""
@@ -108,6 +109,13 @@ let lastTime = 0;
  * Initialization
  */
 function init() {
+    console.log("--- MAGIC_MARKER_12345 ---");
+    window.state = state;
+    window.showScreen = showScreen;
+    window.startNewGame = startNewGame;
+    window.checkDailyReset = checkDailyReset;
+    window.toggleBGM = toggleBGM;
+    window.toggleSFX = toggleSFX;
     if (typeof THREE === 'undefined') {
         console.error("Three.js library failed to load.");
         const errorMsg = document.createElement('div');
@@ -138,6 +146,8 @@ function init() {
         if (!state.lastPlayed) state.lastPlayed = Date.now();
         if (!state.dailyTasks) state.dailyTasks = [];
         if (!state.lastTaskReset) state.lastTaskReset = "";
+        if (state.bgmEnabled === undefined) state.bgmEnabled = true;
+        if (state.sfxEnabled === undefined) state.sfxEnabled = true;
     }
 
     // Initialize Systems (AFTER loading state)
@@ -154,7 +164,9 @@ function init() {
 
     // Initialize Audio
     audioMgr = new AudioManager();
-    audioMgr.updateMuteState(!state.soundEnabled);
+    audioMgr.setBGMEnabled(state.bgmEnabled);
+    audioMgr.setSFXEnabled(state.sfxEnabled);
+
     uiMgr = new UIManager(world);
     const statsP = new StatsPanel(dom.statsAnchor);
     const tasksP = new TasksPanel(dom.tasksAnchor, dom.tasksToggle);
@@ -179,9 +191,8 @@ function init() {
         const deltaMs = time - lastTime;
         lastTime = time;
 
-        // Cap delta to prevent spikes after tab wake
         const cappedDelta = Math.min(deltaMs, 100);
-        const dt = cappedDelta / 16.6; // Normalized 60fps unit
+        const dt = cappedDelta / 16.6;
 
         if (activeScreen === 'game') {
             const isActive = catState === 'play' || catState === 'chase';
@@ -190,13 +201,13 @@ function init() {
 
             behaviorCtrl.update(dt, time);
             eventSys.update(dt, time);
-            catEnt.setState(catState); // Sync state for animation
+            catEnt.setState(catState);
             catEnt.update(dt, time);
 
             updateAI(dt, time);
             if (toy && toy.group) toy.animate(dt, time);
         } else {
-            cat.animate(dt, 'idle', time); // Menu preview
+            cat.animate(dt, 'idle', time);
         }
 
         world.render();
@@ -207,34 +218,38 @@ function init() {
 
     // Event Listeners
     dom.beginBtn.addEventListener('click', startNewGame);
-    dom.soundToggle.addEventListener('click', toggleSound);
+
+    const menuSoundBtn = document.getElementById('menu-sound-toggle');
+    if (menuSoundBtn) menuSoundBtn.addEventListener('click', toggleBGM);
+
+    const menuSfxBtn = document.getElementById('menu-sfx-toggle');
+    if (menuSfxBtn) menuSfxBtn.addEventListener('click', toggleSFX);
 
     const musicBtn = document.getElementById('music-toggle-btn');
-    if (musicBtn) {
-        musicBtn.addEventListener('click', () => {
-            toggleSound();
-            // Optional: update icon or visual state here
-        });
-    }
+    if (musicBtn) musicBtn.addEventListener('click', toggleBGM);
+
+    const sfxBtn = document.getElementById('sfx-toggle-btn');
+    if (sfxBtn) sfxBtn.addEventListener('click', toggleSFX);
 
     dom.shopCatsTab.addEventListener('click', () => { shopTab = 'cats'; renderShop(); });
     dom.shopToysTab.addEventListener('click', () => { shopTab = 'toys'; renderShop(); });
     dom.navBtns.forEach(btn => btn.addEventListener('click', () => showScreen(btn.dataset.screen)));
 
-    // Reset lastTime on tab wake
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             lastTime = performance.now();
-            checkDailyReset(); // Check for day change when returning
+            checkDailyReset();
         }
     });
 
-    // Periodic check for day change (every minute)
     setInterval(checkDailyReset, 60000);
 
     syncUI();
     window.state = state;
     window.checkDailyReset = checkDailyReset;
+    window.toggleBGM = toggleBGM;
+    window.toggleSFX = toggleSFX;
+    window.showScreen = showScreen;
 }
 
 /**
@@ -376,6 +391,24 @@ function syncUI() {
     // Update Floating Stats
     if (dom.gameLevel) dom.gameLevel.textContent = s.level;
     if (dom.gameCoins) dom.gameCoins.textContent = state.coins;
+
+    // Update Audio Buttons
+    const musicBtn = document.getElementById('music-toggle-btn');
+    if (musicBtn) {
+        musicBtn.classList.toggle('muted', !state.bgmEnabled);
+        musicBtn.textContent = state.bgmEnabled ? '🎵' : '🔇';
+    }
+    const sfxBtn = document.getElementById('sfx-toggle-btn');
+    if (sfxBtn) {
+        sfxBtn.classList.toggle('muted', !state.sfxEnabled);
+        sfxBtn.textContent = state.sfxEnabled ? '🔊' : '🔇';
+    }
+
+    // Update Menu Buttons
+    const menuSoundBtn = document.getElementById('menu-sound-toggle');
+    if (menuSoundBtn) menuSoundBtn.textContent = `Music: ${state.bgmEnabled ? 'ON' : 'OFF'}`;
+    const menuSfxBtn = document.getElementById('menu-sfx-toggle');
+    if (menuSfxBtn) menuSfxBtn.textContent = `SFX: ${state.sfxEnabled ? 'ON' : 'OFF'}`;
 }
 
 function updateBar(bar, valText, value) {
@@ -764,13 +797,17 @@ function startNewGame() {
     showScreen('menu');
 }
 
-function toggleSound() {
-    state.soundEnabled = !state.soundEnabled;
-    if (audioMgr) audioMgr.updateMuteState(!state.soundEnabled);
+function toggleBGM() {
+    state.bgmEnabled = !state.bgmEnabled;
+    if (audioMgr) audioMgr.setBGMEnabled(state.bgmEnabled);
+    syncUI();
+    saveGame();
+}
 
-    // Update menu button text
-    if (dom.soundToggle) dom.soundToggle.textContent = `Sound: ${state.soundEnabled ? 'ON' : 'OFF'}`;
-
+function toggleSFX() {
+    state.sfxEnabled = !state.sfxEnabled;
+    if (audioMgr) audioMgr.setSFXEnabled(state.sfxEnabled);
+    syncUI();
     saveGame();
 }
 
