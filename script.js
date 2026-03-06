@@ -50,7 +50,7 @@ let state = JSON.parse(localStorage.getItem(SAVE_KEY)) || {
     soundEnabled: true,
     lastPlayed: Date.now(),
     dailyTasks: [],
-    lastTaskReset: 0
+    lastTaskReset: ""
 };
 
 // Systems Initialization
@@ -137,7 +137,7 @@ function init() {
         if (!state.inventory) state.inventory = { feather: 0, yarn: 0, bell: 0 };
         if (!state.lastPlayed) state.lastPlayed = Date.now();
         if (!state.dailyTasks) state.dailyTasks = [];
-        if (!state.lastTaskReset) state.lastTaskReset = 0;
+        if (!state.lastTaskReset) state.lastTaskReset = "";
     }
 
     // Initialize Systems (AFTER loading state)
@@ -223,10 +223,18 @@ function init() {
 
     // Reset lastTime on tab wake
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') lastTime = performance.now();
+        if (document.visibilityState === 'visible') {
+            lastTime = performance.now();
+            checkDailyReset(); // Check for day change when returning
+        }
     });
 
+    // Periodic check for day change (every minute)
+    setInterval(checkDailyReset, 60000);
+
     syncUI();
+    window.state = state;
+    window.checkDailyReset = checkDailyReset;
 }
 
 /**
@@ -235,7 +243,17 @@ function init() {
 let catState = 'idle';
 let moveTimer = 0;
 let targetX = 0;
-const BOUNDARY = 2.5;
+
+function getBounds() {
+    if (world && world.camera) {
+        const dist = world.camera.position.z;
+        const vFOV = (world.camera.fov * Math.PI) / 180;
+        const height = 2 * Math.tan(vFOV / 2) * dist;
+        const width = height * world.camera.aspect;
+        return Math.max(0.5, (width / 2) - 0.8);
+    }
+    return 2.5;
+}
 
 function updateAI(dt, now) {
     if (activeScreen !== 'game') return;
@@ -285,20 +303,26 @@ function updateAI(dt, now) {
         return;
     }
 
+    const bounds = getBounds();
+
     if (now > moveTimer) {
         // Change behavior
         const rand = Math.random();
         if (rand < 0.6) {
             catState = 'idle';
+            cat.setDirection(0);
             moveTimer = now + 1000 + Math.random() * 3000;
         } else {
             catState = 'walk';
-            targetX = (Math.random() - 0.5) * BOUNDARY * 2;
+            targetX = (Math.random() - 0.5) * bounds * 2;
             moveTimer = now + 2000 + Math.random() * 2000;
         }
     }
 
-    if (catState === 'walk') {
+    if (catState === 'idle') {
+        if (cat.group.position.x > bounds) cat.group.position.x = bounds;
+        if (cat.group.position.x < -bounds) cat.group.position.x = -bounds;
+    } else if (catState === 'walk') {
         const diff = targetX - cat.group.position.x;
         const dir = Math.sign(diff);
 
@@ -307,7 +331,10 @@ function updateAI(dt, now) {
             cat.setDirection(dir);
         } else {
             catState = 'idle';
+            cat.setDirection(0);
         }
+        if (cat.group.position.x > bounds) cat.group.position.x = bounds;
+        if (cat.group.position.x < -bounds) cat.group.position.x = -bounds;
     } else if (catState === 'play') {
         // Smoothly move to center to play
         const diff = 0 - cat.group.position.x;
@@ -433,8 +460,9 @@ function playCat() {
     if (state.currentToy === 'ball') {
         catState = 'chase';
         toy.build('ball');
-        toy.group.position.set(-BOUNDARY, 0.2, 0);
-        cat.group.position.x = -BOUNDARY - 1.5;
+        const bounds = getBounds();
+        toy.group.position.set(-bounds, 0.2, 0);
+        cat.group.position.x = -bounds - 1.5;
     } else {
         catState = 'play';
         toy.build(state.currentToy);
@@ -772,11 +800,13 @@ const TASK_POOL = [
 function checkDailyReset() {
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-    const lastResetStr = localStorage.getItem('lastTaskResetDate');
+    const lastResetStr = state.lastTaskReset;
 
     if (todayStr !== lastResetStr) {
+        console.log("Day change detected! Resetting daily tasks...");
         generateDailyTasks();
-        localStorage.setItem('lastTaskResetDate', todayStr);
+        state.lastTaskReset = todayStr;
+        saveGame();
     }
     syncUI();
 }

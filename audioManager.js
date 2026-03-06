@@ -1,6 +1,6 @@
 export class AudioManager {
     constructor() {
-        this.bgm = new Audio('https://www.chosic.com/wp-content/uploads/2021/04/Tokyo-Music-Walker-Way-Home.mp3');
+        this.bgm = new Audio('./assets/bgm.mp3');
         this.bgm.loop = true;
         this.bgm.volume = 0.3; // Low volume for lo-fi
 
@@ -17,7 +17,15 @@ export class AudioManager {
             if (!this.hasInteracted) {
                 this.hasInteracted = true;
                 if (!this.isMuted) {
-                    this.bgm.play().catch(e => console.log("BGM autoplay blocked:", e));
+                    this.bgm.play()
+                        .then(() => console.log("BGM started successfully"))
+                        .catch(e => {
+                            if (e.name === 'NotSupportedError') {
+                                console.error("BGM Error: The audio file is corrupt or not supported.", e);
+                            } else {
+                                console.log("BGM autoplay blocked or failed:", e);
+                            }
+                        });
                 }
                 document.removeEventListener('click', startAudio);
                 document.removeEventListener('keydown', startAudio);
